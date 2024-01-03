@@ -7,6 +7,7 @@ MobileRobotSimulator::MobileRobotSimulator(ros::NodeHandle *nh)
     nh_ptr = nh;
     // get parameters
     get_params();
+    actual_odom_pub = nh_ptr->advertise<nav_msgs::Odometry>(actual_odometry_topic,50); // odometry publisher
     odom_pub = nh_ptr->advertise<nav_msgs::Odometry>(odometry_topic,50); // odometry publisher
     vel_sub = nh_ptr->subscribe(velocity_topic,5,&MobileRobotSimulator::vel_callback,this); // velocity subscriber
     
@@ -26,7 +27,11 @@ MobileRobotSimulator::MobileRobotSimulator(ros::NodeHandle *nh)
         map_trans.child_frame_id_ = "/odom";
         map_trans.setIdentity();
     }
+
+    // generator = std::make_shared<std::default_random_engine> (10);
+    // distr = std::make_shared<std::normal_distribution<double>> (mean_, stddev_);
     
+
     ROS_INFO("Initialized mobile robot simulator");
     
 }
@@ -42,6 +47,15 @@ void MobileRobotSimulator::get_params()
      nh_ptr->param<double>("publish_rate", publish_rate, 10.0);
      nh_ptr->param<std::string>("velocity_topic", velocity_topic, "/cmd_vel");
      nh_ptr->param<std::string>("odometry_topic", odometry_topic, "/odom");
+     nh_ptr->param<std::string>("actual_odometry_topic", actual_odometry_topic, "/actual_odom");
+     nh_ptr->param<double>("drift_longitudinal_weight", drift_long, 0.1);
+     nh_ptr->param<double>("drift_lateral_weight", drift_lat, 0.01);
+     nh_ptr->param<double>("drift_angular_weight", drift_ang, 0.08);
+     nh_ptr->param<bool>("use_drift_noise", use_drift_noise, true);
+     nh_ptr->param<double>("noise_mean", mean_, 0.2);
+     nh_ptr->param<double>("noise_dev", stddev_, 1);
+     nh_ptr->param<double>("twist_pub_timeout", twist_pub_timeout, 1.0); //sec
+
 }
 
 
@@ -69,9 +83,32 @@ void MobileRobotSimulator::update_loop(const ros::TimerEvent& event)
         odom.header.stamp = last_update;
         odom_trans.stamp_ = last_update;
     }
+
+    if ((last_update-last_vel).toSec()>twist_pub_timeout)
+    {
+        odom.twist.twist.linear.x = 0.0;
+        odom.twist.twist.linear.x = 0.0;
+        odom.twist.twist.angular.z = 0.0;
+        drift_dx = 0.0;
+        drift_dy = 0.0;
+    }
+
+    // create drift odom
+    odom_drift = odom;
+    odom_drift.pose.pose.position.x = odom_drift.pose.pose.position.x + drift_x;
+    odom_drift.pose.pose.position.y = odom_drift.pose.pose.position.y + drift_y;
+    odom_drift.twist.twist.linear.x = odom_drift.twist.twist.linear.x + drift_dx;
+    odom_drift.twist.twist.linear.y = odom_drift.twist.twist.linear.y + drift_dy;
+
+
+    // create actual odom
+    odom_actual = odom;
+    odom_actual.header.frame_id = "map";
+
     // publish odometry and tf
-    odom_pub.publish(odom);
-    get_tf_from_odom(odom);
+    actual_odom_pub.publish(odom_actual);
+    odom_pub.publish(odom_drift);
+    get_tf_from_odom(odom_drift);
     tf_broadcaster.sendTransform(odom_trans); // odom -> base_link
     message_received = false;
     // should we publish the map transform?
@@ -88,6 +125,23 @@ void MobileRobotSimulator::update_odom_from_vel(geometry_msgs::Twist vel, ros::D
     double delta_y = (vel.linear.x * sin(th) + vel.linear.y * cos(th)) * time_diff.toSec();
     double delta_th = vel.angular.z * time_diff.toSec();
     ROS_DEBUG_STREAM("Delta - x: " << delta_x << " y: " << delta_y << " th: " << delta_th);
+
+    //update drift
+    if(use_drift_noise)
+    {
+        std::random_device rd; 
+        std::mt19937 generator(rd()); 
+        std::normal_distribution<double> distr(mean_, stddev_);
+        uncert_x = distr(generator);
+        uncert_y = distr(generator);
+    }
+
+    double tmp_drift_x = drift_long*delta_x + drift_lat*delta_y + drift_ang*1.8*delta_th*uncert_x;
+    double tmp_drift_y = drift_long*delta_y + drift_lat*delta_x + drift_ang*1.8*delta_th*uncert_y;
+    drift_x = drift_x + tmp_drift_x;
+    drift_y = drift_y + tmp_drift_y;
+    drift_dx = tmp_drift_x/time_diff.toSec();
+    drift_dy = tmp_drift_y/time_diff.toSec();
     
     // update odometry
     odom.header.stamp = measure_time;
