@@ -5,6 +5,7 @@
 #include "tf/LinearMath/Transform.h"
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "nav_msgs/Odometry.h"
+#include "ikh_ros_msgs/SetFloatList.h"
 
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_datatypes.h>
@@ -90,7 +91,14 @@ private:
     ros::Subscriber vel_sub;
     ros::Subscriber init_pose_sub;    
     tf::TransformBroadcaster tf_broadcaster; 
-    
+
+    //check pose safety
+    ros::ServiceClient check_pose_safety;
+    ikh_ros_msgs::SetFloatList checkPoseSafetySrv;
+    std::string check_pose_safety_service;
+    bool safe_area = 1;
+    bool pub_only_safe;
+
     //Topics
     std::string velocity_topic;
     std::string odometry_topic;

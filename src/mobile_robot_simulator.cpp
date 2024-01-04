@@ -28,9 +28,7 @@ MobileRobotSimulator::MobileRobotSimulator(ros::NodeHandle *nh)
         map_trans.setIdentity();
     }
 
-    // generator = std::make_shared<std::default_random_engine> (10);
-    // distr = std::make_shared<std::normal_distribution<double>> (mean_, stddev_);
-    
+    check_pose_safety = nh_ptr->serviceClient<ikh_ros_msgs::SetFloatList>(check_pose_safety_service);    
 
     ROS_INFO("Initialized mobile robot simulator");
     
@@ -55,7 +53,8 @@ void MobileRobotSimulator::get_params()
      nh_ptr->param<double>("noise_mean", mean_, 0.2);
      nh_ptr->param<double>("noise_dev", stddev_, 1);
      nh_ptr->param<double>("twist_pub_timeout", twist_pub_timeout, 1.0); //sec
-
+     nh_ptr->param<bool>("pub_actual_odom_only_on_safe_areas", pub_only_safe, true); //sec
+     nh_ptr->param<std::string>("check_pose_safety_service", check_pose_safety_service, "check_pose_safety");
 }
 
 
@@ -106,7 +105,39 @@ void MobileRobotSimulator::update_loop(const ros::TimerEvent& event)
     odom_actual.header.frame_id = "map";
 
     // publish odometry and tf
-    actual_odom_pub.publish(odom_actual);
+    if (pub_only_safe)
+    {   
+        checkPoseSafetySrv.request.data.clear();
+        checkPoseSafetySrv.request.data.push_back(odom_actual.pose.pose.position.x);
+        checkPoseSafetySrv.request.data.push_back(odom_actual.pose.pose.position.y);
+
+        if (check_pose_safety.call(checkPoseSafetySrv))
+        {
+            if (checkPoseSafetySrv.response.success){
+                if (!checkPoseSafetySrv.response.result.front())
+                {
+                    // std::cerr << "Area is UNSAFE" << '\n';
+                    safe_area = 0;
+                }
+                else{
+                    // std::cerr << "Area is SAFE" << '\n';
+                    safe_area = 1;
+                }
+            }
+            else{
+                std::cerr << "check_pose_safety service responded with an error" << '\n';
+            }
+        }
+        else{
+            std::cerr << "Could not call check_pose_safety service" << '\n';
+        }
+    }
+
+    if (safe_area)
+    {
+        actual_odom_pub.publish(odom_actual);
+    }
+    
     odom_pub.publish(odom_drift);
     get_tf_from_odom(odom_drift);
     tf_broadcaster.sendTransform(odom_trans); // odom -> base_link
