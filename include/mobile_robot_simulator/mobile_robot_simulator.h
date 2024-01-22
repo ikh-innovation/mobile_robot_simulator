@@ -88,6 +88,7 @@ private:
     // ROS interfaces
     ros::Publisher odom_pub;
     ros::Publisher actual_odom_pub;
+    ros::Publisher rtk_odom_pub;
     ros::Subscriber vel_sub;
     ros::Subscriber init_pose_sub;    
     tf::TransformBroadcaster tf_broadcaster; 
@@ -103,6 +104,7 @@ private:
     std::string velocity_topic;
     std::string odometry_topic;
     std::string actual_odometry_topic;
+    std::string rtk_odometry_topic;
     
     ros::Timer loop_timer; // timer for the update loop
     

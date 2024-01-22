@@ -8,6 +8,7 @@ MobileRobotSimulator::MobileRobotSimulator(ros::NodeHandle *nh)
     // get parameters
     get_params();
     actual_odom_pub = nh_ptr->advertise<nav_msgs::Odometry>(actual_odometry_topic,50); // odometry publisher
+    rtk_odom_pub = nh_ptr->advertise<nav_msgs::Odometry>(rtk_odometry_topic,50); // odometry publisher
     odom_pub = nh_ptr->advertise<nav_msgs::Odometry>(odometry_topic,50); // odometry publisher
     vel_sub = nh_ptr->subscribe(velocity_topic,5,&MobileRobotSimulator::vel_callback,this); // velocity subscriber
     
@@ -46,6 +47,7 @@ void MobileRobotSimulator::get_params()
      nh_ptr->param<std::string>("velocity_topic", velocity_topic, "/cmd_vel");
      nh_ptr->param<std::string>("odometry_topic", odometry_topic, "/odom");
      nh_ptr->param<std::string>("actual_odometry_topic", actual_odometry_topic, "/actual_odom");
+     nh_ptr->param<std::string>("rtk_odometry_topic", rtk_odometry_topic, "/rtk_odom");
      nh_ptr->param<double>("drift_longitudinal_weight", drift_long, 0.1);
      nh_ptr->param<double>("drift_lateral_weight", drift_lat, 0.01);
      nh_ptr->param<double>("drift_angular_weight", drift_ang, 0.08);
@@ -135,8 +137,9 @@ void MobileRobotSimulator::update_loop(const ros::TimerEvent& event)
 
     if (safe_area)
     {
-        actual_odom_pub.publish(odom_actual);
+        rtk_odom_pub.publish(odom_actual);
     }
+    actual_odom_pub.publish(odom_actual);
     
     odom_pub.publish(odom_drift);
     get_tf_from_odom(odom_drift);
