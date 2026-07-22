@@ -99,6 +99,8 @@ private:
     std::string check_pose_safety_service;
     bool safe_area = 1;
     bool pub_only_safe;
+    double check_pose_safety_rate;
+    ros::Time last_pose_safety_check;
 
     //Topics
     std::string velocity_topic;

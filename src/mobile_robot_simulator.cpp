@@ -15,6 +15,7 @@ MobileRobotSimulator::MobileRobotSimulator(ros::NodeHandle *nh)
     // initialize timers
     last_update = ros::Time::now();
     last_vel = last_update - ros::Duration(0.1);
+    last_pose_safety_check = ros::Time(0);
     // initialize forst odom message
     update_odom_from_vel(geometry_msgs::Twist(), ros::Duration(0.1));
     odom.header.stamp = last_update;
@@ -57,6 +58,7 @@ void MobileRobotSimulator::get_params()
      nh_ptr->param<double>("twist_pub_timeout", twist_pub_timeout, 1.0); //sec
      nh_ptr->param<bool>("pub_actual_odom_only_on_safe_areas", pub_only_safe, true); //sec
      nh_ptr->param<std::string>("check_pose_safety_service", check_pose_safety_service, "check_pose_safety");
+     nh_ptr->param<double>("check_pose_safety_rate", check_pose_safety_rate, 2.0); // Hz, decoupled from publish_rate
 }
 
 
@@ -107,8 +109,9 @@ void MobileRobotSimulator::update_loop(const ros::TimerEvent& event)
     odom_actual.header.frame_id = "map";
 
     // publish odometry and tf
-    if (pub_only_safe)
-    {   
+    if (pub_only_safe && (last_update - last_pose_safety_check).toSec() >= 1.0/check_pose_safety_rate)
+    {
+        last_pose_safety_check = last_update;
         checkPoseSafetySrv.request.data.clear();
         checkPoseSafetySrv.request.data.push_back(odom_actual.pose.pose.position.x);
         checkPoseSafetySrv.request.data.push_back(odom_actual.pose.pose.position.y);
@@ -127,11 +130,11 @@ void MobileRobotSimulator::update_loop(const ros::TimerEvent& event)
                 }
             }
             else{
-                std::cerr << "check_pose_safety service responded with an error" << '\n';
+                ROS_ERROR_THROTTLE(5.0, "check_pose_safety service responded with an error");
             }
         }
         else{
-            std::cerr << "Could not call check_pose_safety service" << '\n';
+            ROS_WARN_THROTTLE(5.0, "Could not call check_pose_safety service (service may still be starting up)");
         }
     }
 
