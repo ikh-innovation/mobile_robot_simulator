@@ -7,6 +7,8 @@ MobileRobotSimulator::MobileRobotSimulator(ros::NodeHandle *nh)
     nh_ptr = nh;
     // get parameters
     get_params();
+    odom.pose.pose.orientation = tf::createQuaternionMsgFromYaw(th);
+
     actual_odom_pub = nh_ptr->advertise<nav_msgs::Odometry>(actual_odometry_topic,50); // odometry publisher
     rtk_odom_pub = nh_ptr->advertise<nav_msgs::Odometry>(rtk_odometry_topic,50); // odometry publisher
     odom_pub = nh_ptr->advertise<nav_msgs::Odometry>(odometry_topic,50); // odometry publisher
@@ -17,6 +19,9 @@ MobileRobotSimulator::MobileRobotSimulator(ros::NodeHandle *nh)
     last_vel = last_update - ros::Duration(0.1);
     last_pose_safety_check = ros::Time(0);
     // initialize forst odom message
+    // print first odom
+    ROS_INFO("Initial odometry - x: %f y: %f th: %f", odom.pose.pose.position.x, odom.pose.pose.position.y, th);
+
     update_odom_from_vel(geometry_msgs::Twist(), ros::Duration(0.1));
     odom.header.stamp = last_update;
     get_tf_from_odom(odom);
@@ -59,7 +64,10 @@ void MobileRobotSimulator::get_params()
      nh_ptr->param<bool>("pub_actual_odom_only_on_safe_areas", pub_only_safe, true); //sec
      nh_ptr->param<std::string>("check_pose_safety_service", check_pose_safety_service, "check_pose_safety");
      nh_ptr->param<double>("check_pose_safety_rate", check_pose_safety_rate, 2.0); // Hz, decoupled from publish_rate
-}
+     nh_ptr->param<double>("initial_x", odom.pose.pose.position.x, 0.0);
+     nh_ptr->param<double>("initial_y", odom.pose.pose.position.y, 0.0);
+     nh_ptr->param<double>("initial_theta", th, 0.0);
+    }
 
 
 void MobileRobotSimulator::start()
